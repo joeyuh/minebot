@@ -2,14 +2,13 @@ import pyautogui
 import time
 import numpy as np
 import pynput
+import random
 from PIL.Image import Image
-from numpy.core._multiarray_umath import ndarray
 from pynput.mouse import Button, Controller
 from PIL import Image, ImageGrab
 
 
 class GameBoard:
-    board: ndarray
 
     def __init__(self, height: int = 16, width: int = 30, init: bool = False, downscale: float = 1.0):
         self.COLOR_MAP = {
@@ -34,7 +33,7 @@ class GameBoard:
             [1, -1],
         ]
         self.GAME_HEIGHT = height  # y
-        self.GAME_WIDTH = width   # x
+        self.GAME_WIDTH = width  # x
         self.SMILE_COORD = 227, 0
         self.TOP_LEFT = 0, 39
         self.downscale = downscale
@@ -81,20 +80,25 @@ class GameBoard:
 
     def refresh(self):
         print("Refresh")
-        # start_time = time.time()
-        self.movable.clear()
-        self.screenshot = ImageGrab.grab().load()
+        start_time = time.time()
+        self.movable.clear()  # This might be slow
+        self.screenshot = ImageGrab.grab(bbox=(self.TOP_LEFT[0] * self.downscale,
+                                               self.TOP_LEFT[1] * self.downscale,
+                                               (self.TOP_LEFT[0] + 16 * self.GAME_WIDTH + 1) * self.downscale,
+                                               (self.TOP_LEFT[1] + 16 * self.GAME_HEIGHT) * self.downscale,
+                                               )).load()
         # print(self.screenshot.size)
+        # self.screenshot.show()
         for x in range(self.GAME_WIDTH):
             for y in range(self.GAME_HEIGHT):
                 if self.board[x][y] == -1:
                     continue  # if we already labeled it as mine, skip
-                a, b = self.return_center(x, y)
-                color = self.screenshot[(a - 8) * self.downscale, (b - 8) * self.downscale]  # check top left corner
+                # a, b = self.return_center(x, y)
+                color = self.screenshot[x * 16 * self.downscale, y * 16 * self.downscale]  # check top left corner
                 if color == (255, 255, 255, 255):  # if it's white
                     self.board[x][y] = -2  # we mark as unchecked
                     continue
-                color = self.screenshot[a * self.downscale, b * self.downscale]  # check center
+                color = self.screenshot[(x * 16 + 8) * self.downscale, (y * 16 + 8) * self.downscale]  # check center
                 # print(self.COLOR_MAP[color])
                 self.board[x][y] = self.COLOR_MAP[color]  # fill in by color table
                 if self.board[x][y] > 0 and (x, y) not in self.moved:
@@ -103,19 +107,27 @@ class GameBoard:
 
         # print(self.board)
 
-        # print("--- %s seconds ---" % (time.time() - start_time))
+        print("--- %s seconds ---" % (time.time() - start_time))
 
     def solve(self):
         for times in range(200):
             # print(f'Size {len(self.movable)}')
             for field in self.movable:
                 x, y = field
-                if self.move(x, y):
+                res, left =self.move(x, y)
+                if left:
                     self.refresh()
                     break
 
-    def move(self, x: int, y: int) -> bool:
+    def move(self, x: int, y: int) -> (bool, bool):
+        """
+
+        :param x: x coord
+        :param y: y coord
+        :return: moved or not, left clicked or not
+        """
         res = False  # Record if we did anything
+        left = False  # if we left clicked, refresh or not
         number = self.board[x][y]
         unchecked = 0
         uncheckeds = []
@@ -132,35 +144,40 @@ class GameBoard:
                     # flaggeds.append((xx,yy))
                 if checking == -2:
                     unchecked += 1
-                    uncheckeds.append((xx,yy))
+                    uncheckeds.append((xx, yy))
 
-        mouse=Controller()
+        mouse = Controller()
         mouse.position = self.TOP_LEFT
-        print(f'Num {number}, Unchecked {unchecked}, flagged {flagged}')
+        # print(f'Num {number}, Unchecked {unchecked}, flagged {flagged}')
         if unchecked + flagged == number:  # all mine confirmed, flagging all
             for field in uncheckeds:
-                print("Flagging")
+                # print("Flagging")
                 xx, yy = field
                 self.board[xx][yy] = -1
                 unchecked -= 1
                 time.sleep(0.01)
                 self.click(xx, yy, Button.right)  # Right click, mine found
                 res = True
+                left = False
 
         if flagged == number:  # all mine already flagged, left clicking all
             for field in uncheckeds:
-                print("Checking")
+                # print("Checking")
                 xx, yy = field
                 time.sleep(0.01)
                 self.click(xx, yy, Button.left)  # Left click, no mine
                 res = True
+                left = True
         elif flagged > number:  # Impossible, something went wrong
             raise Exception('Game Logics Critical Error')
 
         if res:
-            self.moved.add((x,y))
+            self.moved.add((x, y))
 
-        return res
+        return res, left
+
+    def random_start(self):
+        pass
 
     def click(self, x: int, y: int, button=Button.left):
         mouse = Controller()
