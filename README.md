@@ -1,7 +1,7 @@
 # minebot
 
 Bot that beat the minesweeper game. Works at minesweeperonline.com. Not sure if it works with the Windows XP one, but it should. Absolutely no guarentee, however.
-It did beat the game in 25 second on http://minesweeperonline.com. All time record under name joeyuh.
+It did beat the game in 25 second on http://minesweeperonline.com. All time record under name joeyuh. (Before it got taken down for not being legit)
 
 Know issue or potential problem:
 Expert level only,
