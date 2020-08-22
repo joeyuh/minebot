@@ -3,6 +3,7 @@ import time
 import numpy as np
 import pynput
 import random
+from queue import PriorityQueue
 from PIL.Image import Image
 from pynput.mouse import Button, Controller
 from PIL import Image, ImageGrab
@@ -21,6 +22,7 @@ class GameBoard:
             (52, 121, 122, 255): 6,
             (142, 142, 142, 255): 7,
             (123, 123, 123, 255): 8,
+            (0, 0, 0, 255): -1
         }
         self.MOVE_MAP = [
             [1, 0],
@@ -45,6 +47,7 @@ class GameBoard:
         self.screenshot = Image.new('RGB', pyautogui.size()).load()
         self.movable = []  # Checked field that could contain useful clue
         self.moved = set()  # Checked field in which the clues are already used
+        self.likely = PriorityQueue()  # Likely moves
 
     def calculate_scale(self):
         """
@@ -78,9 +81,10 @@ class GameBoard:
     def return_center(self, x: int, y: int):
         return self.TOP_LEFT[0] + 16 * x + 8, self.TOP_LEFT[1] + 16 * y + 8
 
-    def refresh(self):
+    def refresh(self) -> bool:
         print("Refresh")
         start_time = time.time()
+        nonzero = False
         self.movable.clear()  # This might be slow
         self.screenshot = ImageGrab.grab(bbox=(self.TOP_LEFT[0] * self.downscale,
                                                self.TOP_LEFT[1] * self.downscale,
@@ -100,27 +104,31 @@ class GameBoard:
                     continue
                 color = self.screenshot[(x * 16 + 8) * self.downscale, (y * 16 + 8) * self.downscale]  # check center
                 # print(self.COLOR_MAP[color])
-                self.board[x][y] = self.COLOR_MAP[color]  # fill in by color table
-                if self.board[x][y] > 0 and (x, y) not in self.moved:
+                if self.COLOR_MAP[color] == -1:
+                    return False
+                self.board[x][y] = self.COLOR_MAP[color]
+
+                if self.board[x][y] > 0:
+                    nonzero = True
                     # print((x,y))
-                    self.movable.append((x, y))
+                    if (x, y) not in self.moved:
+                        self.movable.append((x, y))
 
         # print(self.board)
-
         print("--- %s seconds ---" % (time.time() - start_time))
+        return nonzero
 
     def solve(self):
         for times in range(200):
             # print(f'Size {len(self.movable)}')
             for field in self.movable:
                 x, y = field
-                res, left =self.move(x, y)
-                if left:
-                    self.refresh()
-                    break
+                res, left = self.move(x, y)
+            self.refresh()
 
     def move(self, x: int, y: int) -> (bool, bool):
         """
+        Main Game Logic
 
         :param x: x coord
         :param y: y coord
@@ -177,7 +185,12 @@ class GameBoard:
         return res, left
 
     def random_start(self):
-        pass
+        x = random.randint(0, self.GAME_WIDTH - 1)
+        y = random.randint(0, self.GAME_HEIGHT - 1)
+        self.click(x, y, Button.left)
+        if not self.refresh():
+            self.click(self.SMILE_COORD[0], self.SMILE_COORD[1])
+            self.random_start()
 
     def click(self, x: int, y: int, button=Button.left):
         mouse = Controller()
@@ -198,6 +211,9 @@ if __name__ == "__main__":
     # time.sleep(0.5)
     # pyautogui.click(game.TOP_LEFT[0]+8,game.TOP_LEFT[1]+8)
     mouse = Controller()
+    mouse.position = game.SMILE_COORD[0], game.SMILE_COORD[1]
+    game.random_start()
     game.refresh()
     game.solve()
+
     print()
