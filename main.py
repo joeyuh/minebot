@@ -1,5 +1,6 @@
 import pyautogui
 import time
+import math
 import numpy as np
 import pynput
 import random
@@ -43,9 +44,9 @@ class GameBoard:
             self.locate_game_screen()
         # 0: Unchecked, 1 - 8: Number of mines around, -2: Checked: No mine, -1 Flagged
         self.board = np.zeros((self.GAME_WIDTH, self.GAME_HEIGHT))
-        self.mouse = pynput.mouse.Controller
+        # self.mouse = pynput.mouse.Controller  # currently useless
         self.screenshot = Image.new('RGB', pyautogui.size()).load()
-        self.movable = []  # Checked field that could contain useful clue
+        self.movable = set()  # Checked field that could contain useful clue
         self.moved = set()  # Checked field in which the clues are already used
         self.likely = PriorityQueue()  # Likely moves
 
@@ -78,14 +79,26 @@ class GameBoard:
 
         return res
 
+    def click_face(self):
+        mouse = Controller()
+        mouse.position = (self.SMILE_COORD[0], self.SMILE_COORD[1])
+        time.sleep(0.01)
+        mouse.press(Button.left)
+        mouse.release(Button.left)
+
     def return_center(self, x: int, y: int):
         return self.TOP_LEFT[0] + 16 * x + 8, self.TOP_LEFT[1] + 16 * y + 8
+
+    def new_game(self):
+        self.click_face()
+        self.random_start()
 
     def refresh(self) -> bool:
         print("Refresh")
         start_time = time.time()
+        self.likely.queue.clear()  # clear the likely queue cuz we are moving
         nonzero = False
-        self.movable.clear()  # This might be slow
+        # self.movable.clear()  # This might be slow
         self.screenshot = ImageGrab.grab(bbox=(self.TOP_LEFT[0] * self.downscale,
                                                self.TOP_LEFT[1] * self.downscale,
                                                (self.TOP_LEFT[0] + 16 * self.GAME_WIDTH + 1) * self.downscale,
@@ -112,19 +125,25 @@ class GameBoard:
                     nonzero = True
                     # print((x,y))
                     if (x, y) not in self.moved:
-                        self.movable.append((x, y))
+                        self.movable.add((x, y))
 
         # print(self.board)
         print("--- %s seconds ---" % (time.time() - start_time))
         return nonzero
 
     def solve(self):
-        for times in range(200):
+        for times in range(250):
+            moved = False
             # print(f'Size {len(self.movable)}')
-            for field in self.movable:
-                x, y = field
-                res, left = self.move(x, y)
-            self.refresh()
+            for field in self.movable.copy():
+                if field in self.movable:
+                    x, y = field
+                    res, left = self.move(x, y)
+                    moved = moved or res
+            if not moved:
+                self.guess()
+            else:
+                self.refresh()
 
     def move(self, x: int, y: int) -> (bool, bool):
         """
@@ -141,6 +160,7 @@ class GameBoard:
         uncheckeds = []
         flagged = 0
         # flaggeds = []
+        # total = 0
         for moves in self.MOVE_MAP:
             dx, dy = moves
             xx = x + dx
@@ -153,7 +173,7 @@ class GameBoard:
                 if checking == -2:
                     unchecked += 1
                     uncheckeds.append((xx, yy))
-
+                # total += 1
         mouse = Controller()
         mouse.position = self.TOP_LEFT
         # print(f'Num {number}, Unchecked {unchecked}, flagged {flagged}')
@@ -181,7 +201,11 @@ class GameBoard:
 
         if res:
             self.moved.add((x, y))
-
+            self.movable.remove((x, y))
+        elif unchecked > 0:
+            for field in uncheckeds:
+                a, b = field
+                self.likely.put((((number - flagged)/unchecked), (a, b)))
         return res, left
 
     def random_start(self):
@@ -189,8 +213,22 @@ class GameBoard:
         y = random.randint(0, self.GAME_HEIGHT - 1)
         self.click(x, y, Button.left)
         if not self.refresh():
-            self.click(self.SMILE_COORD[0], self.SMILE_COORD[1])
+            print("Retrying")
+            self.click_face()
             self.random_start()
+
+    def guess(self):
+        print("Guessing")
+        prob, coord = self.likely.get()
+        x, y = coord
+        self.click(x, y)
+        if not self.refresh():
+            self.clear()
+            time.sleep(1)
+            self.new_game()
+            return False
+        else:
+            return True
 
     def click(self, x: int, y: int, button=Button.left):
         mouse = Controller()
@@ -199,6 +237,12 @@ class GameBoard:
         mouse.press(button)
         mouse.release(button)
 
+    def clear(self):
+        self.board = np.zeros((self.GAME_WIDTH, self.GAME_HEIGHT))
+        self.movable = set()  # Checked field that could contain useful clue
+        self.moved = set()  # Checked field in which the clues are already used
+        self.likely = PriorityQueue()  # Likely moves
+
 
 if __name__ == "__main__":
     print(pyautogui.size())
@@ -206,14 +250,12 @@ if __name__ == "__main__":
     game = GameBoard()
     print(game.calculate_scale())
     game.locate_game_screen(3, 0.5)
+    game.click_face()
     # time.sleep(0.5)
     # pyautogui.click(game.SMILE_COORD)
     # time.sleep(0.5)
     # pyautogui.click(game.TOP_LEFT[0]+8,game.TOP_LEFT[1]+8)
-    mouse = Controller()
-    mouse.position = game.SMILE_COORD[0], game.SMILE_COORD[1]
     game.random_start()
-    game.refresh()
     game.solve()
 
     print()
