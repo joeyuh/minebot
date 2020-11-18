@@ -1,8 +1,6 @@
 import pyautogui
 import time
-import math
 import numpy as np
-import pynput
 import random
 from queue import PriorityQueue
 from PIL.Image import Image
@@ -23,7 +21,9 @@ class GameBoard:
             (52, 121, 122, 255): 6,
             (142, 142, 142, 255): 7,
             (123, 123, 123, 255): 8,
-            (0, 0, 0, 255): -1
+            (0, 0, 0, 255): -1,
+            (191, 41, 28, 255): -2
+
         }
         self.MOVE_MAP = [
             [1, 0],
@@ -132,7 +132,7 @@ class GameBoard:
         return nonzero
 
     def solve(self):
-        for times in range(250):
+        for times in range(1000):
             moved = False
             # print(f'Size {len(self.movable)}')
             for field in self.movable.copy():
@@ -224,7 +224,7 @@ class GameBoard:
         self.click(x, y)
         if not self.refresh():
             self.clear()
-            time.sleep(1)
+            time.sleep(0.05)
             self.new_game()
             return False
         else:
